@@ -28,6 +28,7 @@ let state = loadData();
 state.view = "home";
 let sheet = null;
 let toastTimer;
+let focusQuickProduct = false;
 
 const iconPaths = {
   home: '<path d="m3 10 9-7 9 7v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 21v-7h6v7"/>',
@@ -72,6 +73,10 @@ function normalizePurchaseType(value) {
 function suggestedListName(type) {
   const month = new Intl.DateTimeFormat("es-AR", { month: "long" }).format(new Date());
   return `${normalizePurchaseType(type)} ${month}`;
+}
+
+function quickPurchaseName(date = new Date()) {
+  return `Compra ${new Intl.DateTimeFormat("es-AR", { day: "numeric", month: "long" }).format(date)}`;
 }
 
 function resolveSheetPurchaseType(selectedType, customType) {
@@ -232,7 +237,7 @@ function renderHome() {
           <div class="empty-icon">${icon("cart")}</div>
           <h2>Empezá una compra</h2>
           <p>Armá tu lista y anotá precios a medida que recorrés el supermercado.</p>
-          <button type="button" class="primary-button" data-action="new-purchase">${icon("plus")} Nueva compra</button>
+          <div class="empty-start-actions"><button type="button" class="primary-button" data-action="new-purchase">${icon("plus")} Nueva compra</button><button type="button" class="text-button" data-action="quick-purchase">Empezar compra rápida</button></div>
         </section>`}
       ${average !== null ? `<section class="section"><div class="average-card"><div class="round-icon">${icon("leaf")}</div><div><p>Promedio de ${averageCount} compra${averageCount === 1 ? "" : "s"}${purchase ? " de " + escapeHtml(purchase.type.toLowerCase()) : ""}</p><strong>${formatMoney(average)}</strong></div></div></section>` : ""}
       <section class="section">
@@ -268,6 +273,10 @@ function productRow(product) {
   </div>`;
 }
 
+function renderQuickAdd() {
+  return `<section class="quick-add" aria-labelledby="quick-add-title"><h2 id="quick-add-title">Agregar rápido</h2><form id="quick-add-form"><label class="form-field"><span>Producto</span><input name="name" required maxlength="80" placeholder="Ej. Manteca" autocomplete="off" /></label><div class="quick-add-grid"><label class="form-field"><span>Precio por unidad</span><input name="unitPrice" inputmode="decimal" placeholder="Ej. 5.000" autocomplete="off" /></label><label class="form-field"><span>Cantidad</span><input name="quantity" inputmode="decimal" type="text" value="1" /></label></div><div class="quick-add-subtotal"><span>Subtotal</span><strong id="quick-add-subtotal">—</strong></div><button type="submit" class="primary-button wide">Agregar</button></form></section>`;
+}
+
 function renderList() {
   const purchase = activePurchase();
   if (!purchase) {
@@ -276,11 +285,14 @@ function renderList() {
   const groups = groupedProducts(purchase.products);
   const bought = purchasedProducts(purchase.products);
   const hasNoPrice = bought.filter((product) => !Number.isFinite(product.unitPriceCents)).length;
+  const allBought = purchase.products.length > 0 && bought.length === purchase.products.length;
+  const purchaseProgress = purchase.products.length ? `<p class="subtle list-progress"><span>${bought.length} de ${purchase.products.length} comprados</span><span aria-hidden="true"> · </span><button class="text-button inline-action" type="button" data-action="toggle-all-products" aria-label="${allBought ? "Desmarcar todos los productos" : "Marcar todos los productos"}">${allBought ? "Desmarcar todos" : "Marcar todos"}</button></p>` : "";
   return `
     <main class="screen list-screen">
-      <header class="topbar"><div><p class="eyebrow">${escapeHtml(purchase.type)}</p><h1>${escapeHtml(purchase.name)}</h1><p class="subtle">${bought.length} de ${purchase.products.length} comprados</p></div>${purchase.products.length ? `<button class="icon-button" type="button" data-action="add-product" aria-label="Agregar producto">${icon("plus")}</button>` : ""}</header>
+      <header class="topbar"><div><p class="eyebrow">${escapeHtml(purchase.type)}</p><h1>${escapeHtml(purchase.name)}</h1>${purchaseProgress}</div>${purchase.products.length ? `<button class="icon-button" type="button" data-action="add-product" aria-label="Agregar producto">${icon("plus")}</button>` : ""}</header>
+      ${renderQuickAdd()}
       ${purchase.products.length ? Object.entries(groups).map(([category, products]) => `<section class="category"><div class="category-heading"><h2>${escapeHtml(category)}</h2><span>${products.length} producto${products.length === 1 ? "" : "s"}</span></div><div class="product-list">${products.map(productRow).join("")}</div></section>`).join("") : `
-        <section class="first-product-state"><h2>Tu lista empieza acá</h2><p>Podés cargar los precios cuando los tengas.</p><button class="primary-button" type="button" data-action="add-product">${icon("plus")} Agregar primer producto</button></section>`}
+        <section class="first-product-state"><p>¿Querés preparar la lista? <button class="text-button inline-action" type="button" data-action="add-product">Agregar con detalles</button></p></section>`}
       ${hasNoPrice ? `<div class="helper-note">${icon("info")}<span>Hay ${hasNoPrice} producto${hasNoPrice === 1 ? "" : "s"} comprado${hasNoPrice === 1 ? "" : "s"} sin precio. No suman al total todavía.</span></div>` : ""}
       ${purchase.products.length ? `<div class="list-actions"><button class="secondary-button wide" type="button" data-action="add-product">${icon("plus")} Agregar producto</button></div><div class="list-total"><div><span class="tiny">Total parcial</span><strong>${formatMoney(purchaseCalculatedTotalCents(purchase))}</strong></div><button type="button" class="primary-button" data-action="finish-purchase">Finalizar</button></div>` : ""}
     </main>`;
@@ -292,11 +304,11 @@ function renderHistory() {
   const average = averageCompletedTotalCents(state.purchases);
   return `
     <main class="screen">
-      <header class="topbar"><div><p class="eyebrow">Historial</p><h1>Compras anteriores</h1></div><button class="icon-button" type="button" data-action="new-purchase" aria-label="Nueva compra">${icon("plus")}</button></header>
+      <header class="topbar"><div><p class="eyebrow">Historial</p><h1>Compras anteriores</h1></div></header>
       ${average !== null ? `<div class="average-card"><div class="round-icon">${icon("receipt")}</div><div><p>Promedio de tus últimas ${completed.length} compras</p><strong>${formatMoney(average)}</strong></div></div>` : ""}
-      <section class="section"><div class="section-title"><h2>Compras guardadas</h2><span class="tiny">${completed.length}</span></div>${completed.length ? `<div class="plain-list">${completed.map(historyRow).join("")}</div>` : `<div class="empty-state"><div class="empty-icon">${icon("clock")}</div><h2>Todavía no hay historial</h2><p>Al finalizar una compra, vas a poder verla y reutilizar su lista desde acá.</p></div>`}</section>
+      <section class="section"><div class="section-title"><h2>Compras guardadas</h2><span class="tiny">${completed.length}</span></div>${completed.length ? `<div class="plain-list">${completed.map(historyRow).join("")}</div>` : `<div class="empty-state"><div class="empty-icon">${icon("clock")}</div><h2>Todavía no hay historial</h2><p>Al finalizar una compra, la vas a ver acá.</p></div>`}</section>
       ${drafts.length ? `<section class="section"><div class="section-title"><h2>Listas sin terminar</h2><span class="tiny">${drafts.length}</span></div><div class="plain-list">${drafts.map((purchase) => `<div class="draft-row"><span><span class="row-title">${escapeHtml(purchase.name)}</span><span class="tiny">Actualizada ${dateLabel(purchase.updatedAt)}</span></span><button type="button" class="secondary-button" data-action="resume-draft" data-id="${purchase.id}">Continuar</button></div>`).join("")}</div></section>` : ""}
-      <section class="section"><div class="data-card"><h2>Datos y copia de seguridad</h2><p>Tu información se guarda en este dispositivo. Podés descargar una copia o recuperar una anterior cuando quieras.</p><div class="data-actions"><button class="secondary-button" type="button" data-action="export-data">${icon("download")} Exportar copia</button><button class="secondary-button" type="button" data-action="import-data">${icon("upload")} Importar copia</button></div></div></section>
+      <section class="section"><div class="data-card"><h2>Datos y copia de seguridad</h2><p>Guardá o recuperá una copia de tus datos.</p><div class="data-actions"><button class="secondary-button" type="button" data-action="export-data">${icon("download")} Exportar copia</button><button class="secondary-button" type="button" data-action="import-data">${icon("upload")} Importar copia</button></div></div></section>
     </main>`;
 }
 
@@ -390,10 +402,35 @@ function renderSheet() {
 function render() {
   const screens = { home: renderHome, list: renderList, history: renderHistory };
   app.innerHTML = `${(screens[state.view] || renderHome)()}${renderNav()}${renderSheet()}`;
+  if (focusQuickProduct) {
+    focusQuickProduct = false;
+    requestAnimationFrame(() => document.querySelector("#quick-add-form [name='name']")?.focus());
+  }
 }
 
 function openNewPurchase() {
   sheet = { type: "purchase", purchaseId: null, selectedType: "Supermercado", customType: "", name: suggestedListName("Supermercado"), budget: "", nameIsSuggested: true };
+  render();
+}
+
+function startQuickPurchase() {
+  const current = activePurchase();
+  if (current) {
+    state.view = "list";
+    focusQuickProduct = true;
+    render();
+    return;
+  }
+  const now = new Date();
+  const purchase = {
+    id: makeId("purchase"), name: quickPurchaseName(now), type: "Compra", status: "active", budgetCents: null, products: [],
+    createdAt: now.toISOString(), updatedAt: now.toISOString(), completedAt: null, completion: null
+  };
+  state.purchases.push(purchase);
+  state.activePurchaseId = purchase.id;
+  state.view = "list";
+  focusQuickProduct = true;
+  persist();
   render();
 }
 
@@ -525,11 +562,38 @@ function submitProduct(form) {
   showToast(product ? "Producto actualizado." : "Producto agregado.");
 }
 
+function submitQuickProduct(form) {
+  const purchase = activePurchase();
+  if (!purchase) return;
+  const formData = new FormData(form);
+  const name = String(formData.get("name") || "").trim();
+  const quantity = readQuantityInput(formData.get("quantity"));
+  const price = readMoneyInput(String(formData.get("unitPrice") || "").trim(), true);
+  if (!name) return showToast("Escribí el nombre del producto.");
+  if (quantity === null) return showToast("Ingresá una cantidad mayor que cero.");
+  if (price.invalid) return showToast("Revisá el precio por unidad.");
+  purchase.products.push({ id: makeId("product"), name, category: "Otros", quantity, unitPriceCents: price.value, bought: true, note: "" });
+  touch(purchase);
+  focusQuickProduct = true;
+  persist();
+  render();
+}
+
 function toggleProduct(productId) {
   const purchase = activePurchase();
   const product = purchase?.products.find((item) => item.id === productId);
   if (!product) return;
   product.bought = !product.bought;
+  touch(purchase);
+  persist();
+  render();
+}
+
+function toggleAllProducts() {
+  const purchase = activePurchase();
+  if (!purchase?.products.length) return;
+  const shouldMarkAll = purchase.products.some((product) => !product.bought);
+  purchase.products.forEach((product) => { product.bought = shouldMarkAll; });
   touch(purchase);
   persist();
   render();
@@ -553,6 +617,16 @@ function updateProductPreview() {
   const target = document.querySelector("#live-subtotal");
   if (!form || !target) return;
   const price = readMoneyInput(form.elements.unitPrice.value);
+  const quantity = readQuantityInput(form.elements.quantity.value);
+  if (price.value === null || price.invalid || quantity === null) { target.textContent = "—"; return; }
+  target.textContent = formatMoney(productSubtotalCents({ quantity, unitPriceCents: price.value }));
+}
+
+function updateQuickAddPreview() {
+  const form = document.querySelector("#quick-add-form");
+  const target = document.querySelector("#quick-add-subtotal");
+  if (!form || !target) return;
+  const price = readMoneyInput(form.elements.unitPrice.value, true);
   const quantity = readQuantityInput(form.elements.quantity.value);
   if (price.value === null || price.invalid || quantity === null) { target.textContent = "—"; return; }
   target.textContent = formatMoney(productSubtotalCents({ quantity, unitPriceCents: price.value }));
@@ -690,6 +764,7 @@ function loadNormalized(raw) {
 function handleAction(action, button) {
   const id = button.dataset.id;
   if (action === "new-purchase") openNewPurchase();
+  if (action === "quick-purchase") startQuickPurchase();
   if (action === "close-sheet") { sheet = null; render(); }
   if (action === "edit-purchase") { const purchase = activePurchase(); if (purchase) openPurchaseEditor(purchase); }
   if (action === "show-purchase-types") showPurchaseTypes();
@@ -697,6 +772,7 @@ function handleAction(action, button) {
   if (action === "add-product") openProduct();
   if (action === "edit-product") openProduct(id);
   if (action === "toggle-product") toggleProduct(id);
+  if (action === "toggle-all-products") toggleAllProducts();
   if (action === "delete-product") deleteProduct(id);
   if (action === "change-quantity") changeQuantity(Number(button.dataset.amount));
   if (action === "finish-purchase") openFinishPurchase();
@@ -718,6 +794,7 @@ app.addEventListener("submit", (event) => {
   event.preventDefault();
   if (event.target.id === "purchase-form") submitPurchase(event.target);
   if (event.target.id === "product-form") submitProduct(event.target);
+  if (event.target.id === "quick-add-form") submitQuickProduct(event.target);
   if (event.target.id === "finish-form") submitFinish(event.target);
 });
 
@@ -725,6 +802,7 @@ app.addEventListener("input", (event) => {
   if (MONEY_INPUT_NAMES.has(event.target.name) || event.target.name === "quantity") sanitizeNumericInput(event.target);
   if (event.target.closest("#purchase-form")) updatePurchaseFormSuggestion(event.target);
   if (event.target.closest("#product-form")) updateProductPreview();
+  if (event.target.closest("#quick-add-form")) updateQuickAddPreview();
   if (event.target.closest("#finish-form")) updateFinishPreview();
 });
 
