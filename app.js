@@ -28,7 +28,7 @@ let state = loadData();
 state.view = "home";
 let sheet = null;
 let toastTimer;
-let focusQuickProduct = false;
+let focusProductName = false;
 
 const iconPaths = {
   home: '<path d="m3 10 9-7 9 7v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 21v-7h6v7"/>',
@@ -273,10 +273,6 @@ function productRow(product) {
   </div>`;
 }
 
-function renderQuickAdd() {
-  return `<section class="quick-add" aria-labelledby="quick-add-title"><h2 id="quick-add-title">Agregar rápido</h2><form id="quick-add-form"><label class="form-field"><span>Producto</span><input name="name" required maxlength="80" placeholder="Ej. Manteca" autocomplete="off" /></label><div class="quick-add-grid"><label class="form-field"><span>Precio por unidad</span><input name="unitPrice" inputmode="decimal" placeholder="Ej. 5.000" autocomplete="off" /></label><label class="form-field"><span>Cantidad</span><input name="quantity" inputmode="decimal" type="text" value="1" /></label></div><div class="quick-add-subtotal"><span>Subtotal</span><strong id="quick-add-subtotal">—</strong></div><button type="submit" class="primary-button wide">Agregar</button></form></section>`;
-}
-
 function renderList() {
   const purchase = activePurchase();
   if (!purchase) {
@@ -286,15 +282,14 @@ function renderList() {
   const bought = purchasedProducts(purchase.products);
   const hasNoPrice = bought.filter((product) => !Number.isFinite(product.unitPriceCents)).length;
   const allBought = purchase.products.length > 0 && bought.length === purchase.products.length;
-  const purchaseProgress = purchase.products.length ? `<p class="subtle list-progress"><span>${bought.length} de ${purchase.products.length} comprados</span><span aria-hidden="true"> · </span><button class="text-button inline-action" type="button" data-action="toggle-all-products" aria-label="${allBought ? "Desmarcar todos los productos" : "Marcar todos los productos"}">${allBought ? "Desmarcar todos" : "Marcar todos"}</button></p>` : "";
+  const purchaseProgress = purchase.products.length ? `<div class="list-progress"><span class="subtle">${bought.length} de ${purchase.products.length} comprados</span><button class="text-button inline-action" type="button" data-action="toggle-all-products" aria-label="${allBought ? "Desmarcar todos los productos" : "Marcar todos los productos"}">${allBought ? "Desmarcar todos" : "Marcar todos"}</button></div>` : "";
   return `
     <main class="screen list-screen">
-      <header class="topbar"><div><p class="eyebrow">${escapeHtml(purchase.type)}</p><h1>${escapeHtml(purchase.name)}</h1>${purchaseProgress}</div>${purchase.products.length ? `<button class="icon-button" type="button" data-action="add-product" aria-label="Agregar producto">${icon("plus")}</button>` : ""}</header>
-      ${renderQuickAdd()}
+      <header class="topbar"><div class="list-header-info"><p class="eyebrow">${escapeHtml(purchase.type)}</p><h1>${escapeHtml(purchase.name)}</h1>${purchaseProgress}</div>${purchase.products.length ? `<button class="icon-button" type="button" data-action="add-product" aria-label="Agregar producto">${icon("plus")}</button>` : ""}</header>
       ${purchase.products.length ? Object.entries(groups).map(([category, products]) => `<section class="category"><div class="category-heading"><h2>${escapeHtml(category)}</h2><span>${products.length} producto${products.length === 1 ? "" : "s"}</span></div><div class="product-list">${products.map(productRow).join("")}</div></section>`).join("") : `
-        <section class="first-product-state"><p>¿Querés preparar la lista? <button class="text-button inline-action" type="button" data-action="add-product">Agregar con detalles</button></p></section>`}
+        <section class="first-product-state"><h2>Tu lista está vacía.</h2><button class="primary-button" type="button" data-action="add-product">${icon("plus")} Agregar primer producto</button></section>`}
       ${hasNoPrice ? `<div class="helper-note">${icon("info")}<span>Hay ${hasNoPrice} producto${hasNoPrice === 1 ? "" : "s"} comprado${hasNoPrice === 1 ? "" : "s"} sin precio. No suman al total todavía.</span></div>` : ""}
-      ${purchase.products.length ? `<div class="list-actions"><button class="secondary-button wide" type="button" data-action="add-product">${icon("plus")} Agregar producto</button></div><div class="list-total"><div><span class="tiny">Total parcial</span><strong>${formatMoney(purchaseCalculatedTotalCents(purchase))}</strong></div><button type="button" class="primary-button" data-action="finish-purchase">Finalizar</button></div>` : ""}
+      ${purchase.products.length ? `<div class="list-total"><div><span class="tiny">Total parcial</span><strong>${formatMoney(purchaseCalculatedTotalCents(purchase))}</strong></div><button type="button" class="primary-button" data-action="finish-purchase">Finalizar</button></div>` : ""}
     </main>`;
 }
 
@@ -354,15 +349,19 @@ function renderProductSheet() {
   const purchase = activePurchase();
   const product = sheet.productId ? purchase?.products.find((item) => item.id === sheet.productId) : null;
   const isEditing = Boolean(product);
-  const item = product || { name: "", category: "Almacén", quantity: 1, unitPriceCents: null, note: "" };
+  const item = product || { name: "", category: "Otros", quantity: 1, unitPriceCents: null, note: "" };
   const deleteButton = isEditing ? `<button type="button" class="danger-button" data-action="delete-product" data-id="${item.id}">${icon("trash")} Eliminar producto</button>` : "";
+  const details = `<div id="product-details" ${isEditing ? "" : "hidden"}><label class="form-field"><span>Categoría</span><select name="category">${categoriesOptions(item.category)}</select></label><label class="form-field"><span>Nota <span class="muted">(opcional)</span></span><textarea name="note" maxlength="180" placeholder="Ej. sin sal, marca habitual">${escapeHtml(item.note)}</textarea></label></div>`;
+  const actions = isEditing
+    ? `<div class="sheet-actions"><button type="button" class="secondary-button" data-action="close-sheet">Cancelar</button><button type="submit" class="primary-button">Guardar producto</button></div>`
+    : `<div class="product-add-action"><button type="submit" class="primary-button wide">Agregar</button></div>`;
   return sheetWrapper(isEditing ? "Editar producto" : "Agregar producto", `<form id="product-form">
-    <label class="form-field"><span>Nombre</span><input name="name" required maxlength="80" autofocus placeholder="Ej. Manteca" value="${escapeHtml(item.name)}" /></label>
-    <label class="form-field"><span>Categoría</span><select name="category">${categoriesOptions(item.category)}</select></label>
-    <div class="form-grid"><div class="form-field"><span class="form-label">Cantidad</span><div class="quantity-control"><button type="button" data-action="change-quantity" data-amount="-1" aria-label="Restar una unidad">−</button><input name="quantity" value="${formatQuantity(item.quantity)}" inputmode="decimal" type="text" /><button type="button" data-action="change-quantity" data-amount="1" aria-label="Sumar una unidad">+</button></div></div><label class="form-field"><span>Precio por unidad</span><input name="unitPrice" inputmode="decimal" placeholder="Ej. 5.500" value="${formatInputMoney(item.unitPriceCents)}" /></label></div>
-    <div class="live-subtotal"><span>Subtotal</span><strong id="live-subtotal">${Number.isFinite(item.unitPriceCents) ? formatMoney(productSubtotalCents(item)) : "—"}</strong></div>
-    <label class="form-field"><span>Nota <span class="muted">(opcional)</span></span><textarea name="note" maxlength="180" placeholder="Ej. sin sal, marca habitual">${escapeHtml(item.note)}</textarea></label>
-    <div class="sheet-actions"><button type="button" class="secondary-button" data-action="close-sheet">Cancelar</button><button type="submit" class="primary-button">Guardar producto</button></div>
+    <label class="form-field"><span>Producto</span><input name="name" required maxlength="80" autofocus placeholder="Ej. Manteca" value="${escapeHtml(item.name)}" /></label>
+    <div class="form-field"><span class="form-label">Cantidad</span><div class="quantity-control quantity-control-compact"><button type="button" data-action="change-quantity" data-amount="-1" aria-label="Restar una unidad">−</button><input name="quantity" value="${formatQuantity(item.quantity)}" inputmode="decimal" type="text" /><button type="button" data-action="change-quantity" data-amount="1" aria-label="Sumar una unidad">+</button></div></div>
+    <label class="form-field"><span>Precio por unidad</span><input name="unitPrice" inputmode="decimal" placeholder="Ej. 5.500" value="${formatInputMoney(item.unitPriceCents)}" /></label>
+    <div class="product-subtotal"><span>Subtotal</span><strong id="live-subtotal">${Number.isFinite(item.unitPriceCents) ? formatMoney(productSubtotalCents(item)) : "—"}</strong></div>
+    ${isEditing ? details : `<button type="button" class="text-button product-details-button" data-action="show-product-details">Más detalles</button>${details}`}
+    ${actions}
     ${isEditing ? `<div style="margin-top:12px">${deleteButton}</div>` : ""}
   </form>`);
 }
@@ -402,9 +401,9 @@ function renderSheet() {
 function render() {
   const screens = { home: renderHome, list: renderList, history: renderHistory };
   app.innerHTML = `${(screens[state.view] || renderHome)()}${renderNav()}${renderSheet()}`;
-  if (focusQuickProduct) {
-    focusQuickProduct = false;
-    requestAnimationFrame(() => document.querySelector("#quick-add-form [name='name']")?.focus());
+  if (focusProductName) {
+    focusProductName = false;
+    document.querySelector("#product-form [name='name']")?.focus();
   }
 }
 
@@ -417,7 +416,6 @@ function startQuickPurchase() {
   const current = activePurchase();
   if (current) {
     state.view = "list";
-    focusQuickProduct = true;
     render();
     return;
   }
@@ -429,7 +427,6 @@ function startQuickPurchase() {
   state.purchases.push(purchase);
   state.activePurchaseId = purchase.id;
   state.view = "list";
-  focusQuickProduct = true;
   persist();
   render();
 }
@@ -554,29 +551,15 @@ function submitProduct(form) {
   const data = { name, category: String(formData.get("category") || "Otros"), quantity, unitPriceCents, note: String(formData.get("note") || "").trim() };
   const product = sheet.productId ? purchase.products.find((item) => item.id === sheet.productId) : null;
   if (product) Object.assign(product, data);
-  else purchase.products.push({ id: makeId("product"), bought: false, ...data });
+  else purchase.products.push({ id: makeId("product"), bought: Number.isFinite(unitPriceCents), ...data });
   touch(purchase);
   persist();
-  sheet = null;
+  if (!product) {
+    sheet = { type: "product", productId: null };
+    focusProductName = true;
+  } else sheet = null;
   render();
-  showToast(product ? "Producto actualizado." : "Producto agregado.");
-}
-
-function submitQuickProduct(form) {
-  const purchase = activePurchase();
-  if (!purchase) return;
-  const formData = new FormData(form);
-  const name = String(formData.get("name") || "").trim();
-  const quantity = readQuantityInput(formData.get("quantity"));
-  const price = readMoneyInput(String(formData.get("unitPrice") || "").trim(), true);
-  if (!name) return showToast("Escribí el nombre del producto.");
-  if (quantity === null) return showToast("Ingresá una cantidad mayor que cero.");
-  if (price.invalid) return showToast("Revisá el precio por unidad.");
-  purchase.products.push({ id: makeId("product"), name, category: "Otros", quantity, unitPriceCents: price.value, bought: true, note: "" });
-  touch(purchase);
-  focusQuickProduct = true;
-  persist();
-  render();
+  if (product) showToast("Producto actualizado.");
 }
 
 function toggleProduct(productId) {
@@ -622,14 +605,11 @@ function updateProductPreview() {
   target.textContent = formatMoney(productSubtotalCents({ quantity, unitPriceCents: price.value }));
 }
 
-function updateQuickAddPreview() {
-  const form = document.querySelector("#quick-add-form");
-  const target = document.querySelector("#quick-add-subtotal");
-  if (!form || !target) return;
-  const price = readMoneyInput(form.elements.unitPrice.value, true);
-  const quantity = readQuantityInput(form.elements.quantity.value);
-  if (price.value === null || price.invalid || quantity === null) { target.textContent = "—"; return; }
-  target.textContent = formatMoney(productSubtotalCents({ quantity, unitPriceCents: price.value }));
+function showProductDetails() {
+  const details = document.querySelector("#product-details");
+  const button = document.querySelector(".product-details-button");
+  if (details) details.hidden = false;
+  if (button) button.hidden = true;
 }
 
 function changeQuantity(amount) {
@@ -768,6 +748,7 @@ function handleAction(action, button) {
   if (action === "close-sheet") { sheet = null; render(); }
   if (action === "edit-purchase") { const purchase = activePurchase(); if (purchase) openPurchaseEditor(purchase); }
   if (action === "show-purchase-types") showPurchaseTypes();
+  if (action === "show-product-details") showProductDetails();
   if (action === "choose-purchase-type") choosePurchaseType(button.dataset.type);
   if (action === "add-product") openProduct();
   if (action === "edit-product") openProduct(id);
@@ -794,7 +775,6 @@ app.addEventListener("submit", (event) => {
   event.preventDefault();
   if (event.target.id === "purchase-form") submitPurchase(event.target);
   if (event.target.id === "product-form") submitProduct(event.target);
-  if (event.target.id === "quick-add-form") submitQuickProduct(event.target);
   if (event.target.id === "finish-form") submitFinish(event.target);
 });
 
@@ -802,7 +782,6 @@ app.addEventListener("input", (event) => {
   if (MONEY_INPUT_NAMES.has(event.target.name) || event.target.name === "quantity") sanitizeNumericInput(event.target);
   if (event.target.closest("#purchase-form")) updatePurchaseFormSuggestion(event.target);
   if (event.target.closest("#product-form")) updateProductPreview();
-  if (event.target.closest("#quick-add-form")) updateQuickAddPreview();
   if (event.target.closest("#finish-form")) updateFinishPreview();
 });
 
