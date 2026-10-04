@@ -206,7 +206,7 @@ function activeCard(purchase) {
         <p class="subtle">${bought.length} de ${purchase.products.length} productos comprados</p>
       </div>
       <div class="card-footer">
-        <button class="secondary-button" type="button" data-action="edit-purchase" aria-label="Editar presupuesto">${icon("pencil")} Ajustar</button>
+        <button class="secondary-button" type="button" data-action="edit-purchase" aria-label="Editar compra">${icon("pencil")} Editar</button>
         <button class="primary-button" type="button" data-view="list">Continuar ${icon("arrow")}</button>
       </div>
     </article>
@@ -322,13 +322,19 @@ function renderPurchaseSheet() {
   const resolvedType = resolveSheetPurchaseType(selectedType, customType);
   const name = sheet.name ?? existing?.name ?? suggestedListName(resolvedType);
   const budget = sheet.budget ?? formatInputMoney(existing?.budgetCents);
-  const title = existing ? "Ajustar compra" : "Nueva compra";
+  const isEditing = Boolean(existing);
+  const showTypeOptions = !isEditing || Boolean(sheet.showTypeOptions);
+  const typeSelector = `<div class="form-field"><span class="form-label">¿Qué vas a organizar?</span><div class="type-chips" role="group" aria-label="Qué vas a organizar">${PURCHASE_TYPE_SUGGESTIONS.map((type) => `<button type="button" class="type-chip ${selectedType === type ? "is-selected" : ""}" data-action="choose-purchase-type" data-type="${type}" aria-pressed="${selectedType === type}">${type}</button>`).join("")}<button type="button" class="type-chip ${selectedType === "Otro" ? "is-selected" : ""}" data-action="choose-purchase-type" data-type="Otro" aria-pressed="${selectedType === "Otro"}">${icon("plus")} Otro</button></div></div>`;
+  const customTypeInput = selectedType === "Otro" && showTypeOptions ? `<label class="form-field"><span>¿Cómo querés llamarlo?</span><input name="customType" required maxlength="60" placeholder="Ej. Feria" value="${escapeHtml(customType)}" /></label>` : "";
+  const typeValue = `<input type="hidden" name="type" value="${escapeHtml(selectedType)}" />`;
+  const customTypeValue = selectedType === "Otro" && !showTypeOptions ? `<input type="hidden" name="customType" value="${escapeHtml(customType)}" />` : "";
+  const title = isEditing ? "Editar compra" : "Nueva compra";
   return sheetWrapper(title, `<form id="purchase-form">
-    <div class="form-field"><span class="form-label">¿Qué vas a organizar?</span><div class="type-chips" role="group" aria-label="Qué vas a organizar">${PURCHASE_TYPE_SUGGESTIONS.map((type) => `<button type="button" class="type-chip ${selectedType === type ? "is-selected" : ""}" data-action="choose-purchase-type" data-type="${type}" aria-pressed="${selectedType === type}">${type}</button>`).join("")}<button type="button" class="type-chip ${selectedType === "Otro" ? "is-selected" : ""}" data-action="choose-purchase-type" data-type="Otro" aria-pressed="${selectedType === "Otro"}">${icon("plus")} Otro</button></div><input type="hidden" name="type" value="${escapeHtml(selectedType)}" /></div>
-    ${selectedType === "Otro" ? `<label class="form-field"><span>¿Cómo querés llamarlo?</span><input name="customType" required maxlength="60" placeholder="Ej. Feria" value="${escapeHtml(customType)}" /></label>` : ""}
+    ${isEditing ? `${typeValue}${customTypeValue}` : `${typeSelector}${typeValue}${customTypeInput}`}
     <label class="form-field"><span>Nombre de la lista</span><input name="name" required maxlength="60" placeholder="Ej. Supermercado octubre" value="${escapeHtml(name)}" /></label>
     <label class="form-field"><span>Presupuesto orientativo <span class="muted">(opcional)</span></span><input name="budget" inputmode="decimal" placeholder="Ej. 280.000" value="${escapeHtml(budget)}" /><span class="input-note">Es una referencia, no un límite.</span></label>
-    <div class="sheet-actions"><button type="button" class="secondary-button" data-action="close-sheet">Cancelar</button><button type="submit" class="primary-button">${existing ? "Guardar cambios" : "Crear compra"}</button></div>
+    ${isEditing ? `<div class="purchase-category-change"><button type="button" class="text-button" data-action="show-purchase-types">Cambiar categoría</button>${showTypeOptions ? `${typeSelector}${customTypeInput}` : ""}</div>` : ""}
+    <div class="sheet-actions"><button type="button" class="secondary-button" data-action="close-sheet">Cancelar</button><button type="submit" class="primary-button">${isEditing ? "Guardar cambios" : "Crear compra"}</button></div>
   </form>`);
 }
 
@@ -424,8 +430,15 @@ function choosePurchaseType(type) {
   const wasSuggested = Boolean(sheet.nameIsSuggested);
   sheet.selectedType = type;
   const nextType = resolveSheetPurchaseType(type, sheet.customType);
-  if (wasSuggested) sheet.name = suggestedListName(nextType);
-  sheet.nameIsSuggested = wasSuggested;
+  const shouldUpdateSuggestedName = wasSuggested && !sheet.purchaseId;
+  if (shouldUpdateSuggestedName) sheet.name = suggestedListName(nextType);
+  sheet.nameIsSuggested = shouldUpdateSuggestedName;
+  render();
+}
+
+function showPurchaseTypes() {
+  capturePurchaseDraft();
+  sheet.showTypeOptions = true;
   render();
 }
 
@@ -679,6 +692,7 @@ function handleAction(action, button) {
   if (action === "new-purchase") openNewPurchase();
   if (action === "close-sheet") { sheet = null; render(); }
   if (action === "edit-purchase") { const purchase = activePurchase(); if (purchase) openPurchaseEditor(purchase); }
+  if (action === "show-purchase-types") showPurchaseTypes();
   if (action === "choose-purchase-type") choosePurchaseType(button.dataset.type);
   if (action === "add-product") openProduct();
   if (action === "edit-product") openProduct(id);

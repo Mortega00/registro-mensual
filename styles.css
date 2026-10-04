@@ -158,6 +158,9 @@ h3 { margin-bottom: 0; font-size: 1rem; letter-spacing: -.015em; }
 .type-chip .icon { width: 15px; height: 15px; }
 .type-chip.is-selected { border-color: #bbbeb7; background: #ecece6; font-weight: 730; }
 .type-chip:active { transform: scale(.98); }
+.purchase-category-change { margin: 1px 0 21px; }
+.purchase-category-change > .text-button { min-height: 26px; }
+.purchase-category-change .form-field { margin-top: 11px; }
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .quantity-control { display: grid; grid-template-columns: 43px minmax(0, 1fr) 43px; overflow: hidden; border: 1px solid #d9ddd5; border-radius: 12px; background: #fffefa; }
 .quantity-control button { display: grid; min-height: 47px; place-items: center; color: var(--ink); border: 0; background: var(--surface-muted); font-size: 1.35rem; }
